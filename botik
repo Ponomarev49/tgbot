@@ -1,0 +1,110 @@
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
+from configuration import bot_token, weather_token, news_token
+import requests
+import random
+
+
+TOKEN = bot_token
+
+updater = Updater(token=TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+
+
+def send_keyboard(update, context):
+    button1 = InlineKeyboardButton("Помощь", callback_data="help")
+    button2 = InlineKeyboardButton("Ответ", callback_data="echo")
+    button3 = InlineKeyboardButton("Погода", callback_data="weather")
+    button4 = InlineKeyboardButton("Новость", callback_data="news")
+    button5 = InlineKeyboardButton("Шутка", callback_data="joke")
+
+    keyboard = [[button1, button2, button3, button4, button5]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    update.message.reply_text("Вас приветсвует телеграм бот!\nНиже вам представлено меню", reply_markup=reply_markup)
+
+
+def button_callback(update, context):
+    query = update.callback_query
+    if query.data == "help":
+        context.bot.send_message(chat_id=query.message.chat_id, text="/help")
+        help_command(update, context)
+    elif query.data == "echo":
+        context.bot.send_message(chat_id=query.message.chat_id, text="Напишите /echo <текст>")
+    elif query.data == "weather":
+        context.bot.send_message(chat_id=query.message.chat_id, text="Напишите /weather <город>")
+    elif query.data == "news":
+        context.bot.send_message(chat_id=query.message.chat_id, text="Напишите /news")
+    elif query.data == "joke":
+        context.bot.send_message(chat_id=query.message.chat_id, text="/joke")
+        joke(update, context)
+
+
+def help_command(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text='Доступные команды:\n'
+                                  '/start - приветствие пользователя и вывод меню\n'
+                                  '/help - вывод списка доступных команд\n'
+                                  '/echo <текст> - эхо-ответ с переданным текстом\n'
+                                  '/weather <город>  - вывод текущей погоды в указанном городе\n'
+                                  '/news - вывод последних новостей\n'
+                                  '/joke - вывод случайной шутки(Про Чак Норриса)\n'
+                                  '/stop - прощание с пользователем и остановка работы бота\n')
+
+
+def echo(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text=update.message.text.replace('/echo', ''))
+
+
+def weather(update, context):
+    city = update.message.text.replace('/weather ', '')
+    request = requests.get(f'http://api.weatherapi.com/v1/current.json?key={weather_token}&q={city}&aqi=yes')
+    info = request.json()
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text=f'{info["location"]["name"]}\n'
+                                  f'Температура - {info["current"]["temp_c"]}\n'
+                                  f'Ощущается как - {info["current"]["feelslike_c"]}\n'
+                                  f'Скорость ветра и направление - {info["current"]["wind_kph"]} км/ч {info["current"]["wind_dir"]}\n'
+                                  f'Давление - {round(info["current"]["pressure_mb"] * 0.750064)} мм рт. ст.')
+
+
+def news(update, context):
+    request = requests.get(f'https://newsapi.org/v2/top-headlines?country=ru&apiKey={news_token}')
+    info = request.json()
+    rand_news = random.choice(info["articles"])
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text=f'Источник: {rand_news["source"]["name"]}\n'
+                                  f'Автор: {rand_news["author"]}\n'
+                                  f'{rand_news["title"]}\n'
+                                  f'{rand_news["url"]}\n')
+
+
+def joke(update, context):
+    r = requests.get(f"https://api.chucknorris.io/jokes/random")
+    info = r.json()
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text=f'{info["value"]}\n')
+
+
+def unknown(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text="Упс..\nЯ не понимаю такой команды\nПосмотрите все доступные команды в /help")
+
+
+def stop(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text="До свидания!")
+    updater.stop()
+
+
+dispatcher.add_handler(CommandHandler("start", send_keyboard))
+dispatcher.add_handler(CommandHandler("help", help_command))
+dispatcher.add_handler(CommandHandler("echo", echo))
+dispatcher.add_handler(CommandHandler("weather", weather))
+dispatcher.add_handler(CommandHandler("news", news))
+dispatcher.add_handler(CommandHandler("joke", joke))
+dispatcher.add_handler(CommandHandler("stop", stop))
+dispatcher.add_handler(MessageHandler(Filters.command, unknown))
+dispatcher.add_handler(CallbackQueryHandler(button_callback))
+
+updater.start_polling()
